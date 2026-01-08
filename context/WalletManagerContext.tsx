@@ -25,6 +25,8 @@ import {
 } from '@breeztech/breez-sdk-spark-react-native';
 import { CurrencyConversionService } from '@/services/CurrencyConversionService';
 import { deriveNsecFromMnemonic } from '@/utils/keyHelpers';
+import { ProviderRepository } from '@/queue/WorkQueue';
+import { ActiveWalletProvider, WalletWrapper } from '@/queue/providers/Wallet';
 
 export interface WalletManagerContextType {
   activeWallet?: Wallet;
@@ -251,6 +253,7 @@ export const WalletManagerContextProvider: React.FC<WalletManagerContextProvider
       const wallet = await getWallet(walletType);
 
       setActiveWallet(wallet);
+      ProviderRepository.register(new ActiveWalletProvider(new WalletWrapper(wallet)));
       setPreferredWallet(walletType);
 
       await AsyncStorage.setItem(PREFERRED_WALLET_KEY, JSON.stringify(walletType));

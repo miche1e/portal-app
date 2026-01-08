@@ -3,10 +3,16 @@ import * as TaskManager from 'expo-task-manager';
 import * as Notifications from 'expo-notifications';
 import { AppState } from 'react-native';
 import { DATABASE_NAME } from './app/_layout';
-import { handleHeadlessNotification } from '@/services/NotificationService';
+import { handleHeadlessNotification, sendNotification } from '@/services/NotificationService';
 
 // Import expo-router entry point - must be imported for app to work
 import 'expo-router/entry';
+import { openDatabaseAsync } from 'expo-sqlite';
+import { DatabaseService } from './services/DatabaseService';
+import { ProviderRepository } from './queue/WorkQueue';
+import { PromptUserWithNotification } from './queue/providers/PromptUser';
+import { NotificationProvider } from './queue/providers/Notification';
+import { ActiveWalletProvider, WalletWrapper } from './queue/providers/Wallet';
 
 const BACKGROUND_NOTIFICATION_TASK = 'BACKGROUND-NOTIFICATION-TASK';
 /**
@@ -85,3 +91,21 @@ TaskManager.defineTask<Notifications.NotificationTaskPayload>(
 // Register background notification handler
 // This must be called before requesting permissions
 Notifications.registerTaskAsync(BACKGROUND_NOTIFICATION_TASK);
+
+async function initializeDatabase() {
+  const sqlite = await openDatabaseAsync(DATABASE_NAME);
+  const db = new DatabaseService(sqlite);
+  ProviderRepository.register(db);
+}
+
+initializeDatabase()
+  .then(() => {
+    console.log('Database initialized');
+  })
+  .catch(error => {
+    console.error('Error initializing database', error);
+  });
+
+ProviderRepository.register(new PromptUserWithNotification(sendNotification));
+ProviderRepository.register(new NotificationProvider(sendNotification));
+ProviderRepository.register(new ActiveWalletProvider(new WalletWrapper(null)));

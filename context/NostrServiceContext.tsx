@@ -15,6 +15,8 @@ import defaultRelayList from '../assets/DefaultRelays.json';
 import { useOnboarding } from './OnboardingContext';
 import { getKeypairFromKey, hasKey } from '@/utils/keyHelpers';
 import { getServiceNameFromProfile, mapNumericStatusToString } from '@/utils/nostrHelper';
+import { ProviderRepository } from '@/queue/WorkQueue';
+import { RelayStatusesProvider } from '@/queue/providers/RelayStatus';
 
 // Context type definition
 export interface NostrServiceContextType {
@@ -256,6 +258,7 @@ export const NostrServiceProvider: React.FC<NostrServiceProviderProps> = ({
           new LocalRelayStatusListener(),
           false
         );
+        ProviderRepository.register(app, 'PortalAppInterface');
 
         // Start listening and give it a moment to establish connections
         app.listen({ signal: abortController.signal });
@@ -374,6 +377,7 @@ export const NostrServiceProvider: React.FC<NostrServiceProviderProps> = ({
 
   useEffect(() => {
     relayStatusesRef.current = relayStatuses;
+    ProviderRepository.register(new RelayStatusesProvider(relayStatuses));
   }, [relayStatuses]);
 
   useEffect(() => {
