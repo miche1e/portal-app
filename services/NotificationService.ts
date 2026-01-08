@@ -10,10 +10,8 @@ import {
   CloseRecurringPaymentResponse,
   Currency_Tags,
   Mnemonic,
-  NostrConnectRequestEvent,
   NostrConnectResponseStatus,
   PaymentStatus,
-  PaymentStatusNotifier,
   PortalApp,
   PortalAppInterface,
   RecurringPaymentRequest,
@@ -27,11 +25,8 @@ import { openDatabaseAsync } from 'expo-sqlite';
 import { DatabaseService } from './DatabaseService';
 import { PortalAppManager } from './PortalAppManager';
 import {
-  handleAuthChallenge,
   handleCloseRecurringPaymentResponse,
   handleNostrConnectRequest,
-  handleRecurringPaymentRequest,
-  handleSinglePaymentRequest,
 } from './EventFilters';
 import { mapNumericStatusToString, getServiceNameFromProfile } from '@/utils/nostrHelper';
 import { RelayInfo } from '@/utils/common';
@@ -39,14 +34,28 @@ import { Currency, CurrencyHelpers } from '@/utils/currency';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NwcService } from './NwcService';
 import { Wallet } from '@/models/WalletType';
-import {
-  LocalAuthChallengeListener,
-  LocalClosedRecurringPaymentListener,
-  LocalNip46RequestListener,
-  LocalPaymentRequestListener,
-} from '@/context/PortalAppContext';
 
 const EXPO_PUSH_TOKEN_KEY = 'expo_push_token_key';
+
+/**
+ * Sends a local notification immediately.
+ * This is a reusable abstraction for sending notifications independently of the prompt user flow.
+ * @param content - The notification content to display
+ */
+export async function sendNotification(
+  content: Notifications.NotificationContentInput
+): Promise<void> {
+  try {
+    await Notifications.scheduleNotificationAsync({
+      content,
+      trigger: null, // Show immediately
+    });
+  } catch (error) {
+    console.error('Failed to send notification:', error);
+    // Re-throw to allow callers to handle errors if needed
+    throw error;
+  }
+}
 
 async function subscribeToNotificationService(expoPushToken: string, pubkeys: string[]) {
   const lastExpoPushNotificationToken = await SecureStore.getItemAsync(EXPO_PUSH_TOKEN_KEY);
@@ -370,190 +379,190 @@ export async function handleHeadlessNotification(event: string, databaseName: st
     let app = await PortalApp.create(keypair, notificationRelays, relayListener);
     app.listen({ signal: abortController.signal });
 
-    // Listen for closed recurring payments
-    app
-      .listenClosedRecurringPayment(
-        new LocalClosedRecurringPaymentListener(async (response: CloseRecurringPaymentResponse) => {
-          console.log('Closed subscription received', response);
-          const resolver = async () => {
-            /* NOOP */
-          };
-          await handleCloseRecurringPaymentResponse(
-            response,
-            executeOperationForNotification,
-            resolver
-          );
-          abortController.abort();
-        })
-      )
-      .catch(async e => {
-        await notifyBackgroundError('Recurring payment listener error', e);
-      });
+    //   // Listen for closed recurring payments
+    //   app
+    //     .listenClosedRecurringPayment(
+    //       new LocalClosedRecurringPaymentListener(async (response: CloseRecurringPaymentResponse) => {
+    //         console.log('Closed subscription received', response);
+    //         const resolver = async () => {
+    //           /* NOOP */
+    //         };
+    //         await handleCloseRecurringPaymentResponse(
+    //           response,
+    //           executeOperationForNotification,
+    //           resolver
+    //         );
+    //         abortController.abort();
+    //       })
+    //     )
+    //     .catch(async e => {
+    //       await notifyBackgroundError('Recurring payment listener error', e);
+    //     });
 
-    app
-      .listenForPaymentRequest(
-        new LocalPaymentRequestListener(
-          async (request: SinglePaymentRequest, notifier: PaymentStatusNotifier) => {
-            const id = request.eventId;
+    //   app
+    //     .listenForPaymentRequest(
+    //       new LocalPaymentRequestListener(
+    //         async (request: SinglePaymentRequest, notifier: PaymentStatusNotifier) => {
+    //           const id = request.eventId;
 
-            const alreadyTracked = await executeOperationForNotification(
-              db => db.markNotificationEventProcessed(id),
-              false
-            );
-            if (alreadyTracked) {
-              return;
-            }
+    //           const alreadyTracked = await executeOperationForNotification(
+    //             db => db.markNotificationEventProcessed(id),
+    //             false
+    //           );
+    //           if (alreadyTracked) {
+    //             return;
+    //           }
 
-            console.log(`Single payment request with id ${id} received`, request);
+    //           console.log(`Single payment request with id ${id} received`, request);
 
-            const resolver = async (status: PaymentStatus) => {
-              await notifier.notify({
-                status,
-                requestId: request.content.requestId,
-              });
-            };
+    //           const resolver = async (status: PaymentStatus) => {
+    //             await notifier.notify({
+    //               status,
+    //               requestId: request.content.requestId,
+    //             });
+    //           };
 
-            let preferredCurrency: Currency = Currency.SATS;
-            const savedCurrency = await AsyncStorage.getItem('preferred_currency');
-            if (savedCurrency && CurrencyHelpers.isValidCurrency(savedCurrency)) {
-              preferredCurrency = savedCurrency;
-            }
+    //           let preferredCurrency: Currency = Currency.SATS;
+    //           const savedCurrency = await AsyncStorage.getItem('preferred_currency');
+    //           if (savedCurrency && CurrencyHelpers.isValidCurrency(savedCurrency)) {
+    //             preferredCurrency = savedCurrency;
+    //           }
 
-            await handleSinglePaymentRequest(
-              nwcWallet,
-              request,
-              preferredCurrency,
-              executeOperationForNotification,
-              resolver,
-              true
-            );
+    //           await handleSinglePaymentRequest(
+    //             nwcWallet,
+    //             request,
+    //             preferredCurrency,
+    //             executeOperationForNotification,
+    //             resolver,
+    //             true
+    //           );
 
-            abortController.abort();
-          },
-          async (request: RecurringPaymentRequest): Promise<RecurringPaymentResponseContent> => {
-            const id = request.eventId;
+    //           abortController.abort();
+    //         },
+    //         async (request: RecurringPaymentRequest): Promise<RecurringPaymentResponseContent> => {
+    //           const id = request.eventId;
 
-            const alreadyTracked = await executeOperationForNotification(
-              db => db.markNotificationEventProcessed(id),
-              false
-            );
-            if (alreadyTracked) {
-              return new Promise<RecurringPaymentResponseContent>(resolve => {
-                // Ignore
-              });
-            }
+    //           const alreadyTracked = await executeOperationForNotification(
+    //             db => db.markNotificationEventProcessed(id),
+    //             false
+    //           );
+    //           if (alreadyTracked) {
+    //             return new Promise<RecurringPaymentResponseContent>(resolve => {
+    //               // Ignore
+    //             });
+    //           }
 
-            console.log(`Recurring payment request with id ${id} received`, request);
+    //           console.log(`Recurring payment request with id ${id} received`, request);
 
-            return new Promise<RecurringPaymentResponseContent>(resolve => {
-              handleRecurringPaymentRequest(request, executeOperationForNotification, resolve)
-                .then(askUser => {
-                  if (askUser) {
-                    // Show notification to user for manual approval
-                    Notifications.scheduleNotificationAsync({
-                      content: {
-                        title: 'Subscription Request',
-                        body: `Subscription request for ${request.content.amount} ${request.content.currency.tag === Currency_Tags.Fiat && request.content.currency.inner} to ${request.recipient} requires approval`,
-                        data: {
-                          type: 'payment_request',
-                          requestId: id,
-                          amount: request.content.amount,
-                        },
-                      },
-                      trigger: null, // Show immediately
-                    });
-                  }
-                })
-                .finally(() => {
-                  abortController.abort();
-                });
-            });
-          }
-        )
-      )
-      .catch(async (e: any) => {
-        await notifyBackgroundError('Payment request listener error', e);
-        // TODO: re-initialize the app
-      });
+    //           return new Promise<RecurringPaymentResponseContent>(resolve => {
+    //             handleRecurringPaymentRequest(request, executeOperationForNotification, resolve)
+    //               .then(askUser => {
+    //                 if (askUser) {
+    //                   // Show notification to user for manual approval
+    //                   Notifications.scheduleNotificationAsync({
+    //                     content: {
+    //                       title: 'Subscription Request',
+    //                       body: `Subscription request for ${request.content.amount} ${request.content.currency.tag === Currency_Tags.Fiat && request.content.currency.inner} to ${request.recipient} requires approval`,
+    //                       data: {
+    //                         type: 'payment_request',
+    //                         requestId: id,
+    //                         amount: request.content.amount,
+    //                       },
+    //                     },
+    //                     trigger: null, // Show immediately
+    //                   });
+    //                 }
+    //               })
+    //               .finally(() => {
+    //                 abortController.abort();
+    //               });
+    //           });
+    //         }
+    //       )
+    //     )
+    //     .catch(async (e: any) => {
+    //       await notifyBackgroundError('Payment request listener error', e);
+    //       // TODO: re-initialize the app
+    //     });
 
-    app
-      .listenForAuthChallenge(
-        new LocalAuthChallengeListener(async (event: AuthChallengeEvent) => {
-          const id = event.eventId;
+    //   app
+    //     .listenForAuthChallenge(
+    //       new LocalAuthChallengeListener(async (event: AuthChallengeEvent) => {
+    //         const id = event.eventId;
 
-          const alreadyTracked = await executeOperationForNotification(
-            db => db.markNotificationEventProcessed(id),
-            false
-          );
-          if (alreadyTracked) {
-            return new Promise<AuthResponseStatus>(resolve => {
-              // Ignore
-            });
-          }
+    //         const alreadyTracked = await executeOperationForNotification(
+    //           db => db.markNotificationEventProcessed(id),
+    //           false
+    //         );
+    //         if (alreadyTracked) {
+    //           return new Promise<AuthResponseStatus>(resolve => {
+    //             // Ignore
+    //           });
+    //         }
 
-          console.log(`Auth challenge with id ${id} received`, event);
+    //         console.log(`Auth challenge with id ${id} received`, event);
 
-          return new Promise<AuthResponseStatus>(resolve => {
-            handleAuthChallenge(event, executeOperationForNotification, resolve)
-              .then(askUser => {
-                Notifications.scheduleNotificationAsync({
-                  content: {
-                    title: 'Authentication Request',
-                    body: `Authentication request requires approval`,
-                    data: {
-                      type: 'authentication_request',
-                      requestId: id,
-                    },
-                  },
-                  trigger: null, // Show immediately
-                });
-              })
-              .finally(() => {
-                abortController.abort();
-              });
-          });
-        })
-      )
-      .catch(async (e: any) => {
-        await notifyBackgroundError('Auth challenge listener error', e);
-        // TODO: re-initialize the app
-      });
+    //         return new Promise<AuthResponseStatus>(resolve => {
+    //           handleAuthChallenge(event, executeOperationForNotification, resolve)
+    //             .then(askUser => {
+    //               Notifications.scheduleNotificationAsync({
+    //                 content: {
+    //                   title: 'Authentication Request',
+    //                   body: `Authentication request requires approval`,
+    //                   data: {
+    //                     type: 'authentication_request',
+    //                     requestId: id,
+    //                   },
+    //                 },
+    //                 trigger: null, // Show immediately
+    //               });
+    //             })
+    //             .finally(() => {
+    //               abortController.abort();
+    //             });
+    //         });
+    //       })
+    //     )
+    //     .catch(async (e: any) => {
+    //       await notifyBackgroundError('Auth challenge listener error', e);
+    //       // TODO: re-initialize the app
+    //     });
 
-    app
-      .listenForNip46Request(
-        new LocalNip46RequestListener((event: NostrConnectRequestEvent) => {
-          const id = event.id;
-          return new Promise<NostrConnectResponseStatus>(resolve => {
-            handleNostrConnectRequest(
-              event,
-              keyToHex(keypair.publicKey()),
-              executeOperationForNotification,
-              resolve
-            )
-              .then(askUser => {
-                if (askUser) {
-                  Notifications.scheduleNotificationAsync({
-                    content: {
-                      title: 'Authentication Request',
-                      body: `Authentication request requires approval`,
-                      data: {
-                        type: 'authentication_request',
-                        requestId: id,
-                      },
-                    },
-                    trigger: null, // Show immediately
-                  });
-                }
-              })
-              .finally(() => {
-                abortController.abort();
-              });
-          });
-        })
-      )
-      .catch(e => {
-        console.error('Error listening for nip46 requests.', e);
-      });
+    //   app
+    //     .listenForNip46Request(
+    //       new LocalNip46RequestListener((event: NostrConnectRequestEvent) => {
+    //         const id = event.id;
+    //         return new Promise<NostrConnectResponseStatus>(resolve => {
+    //           handleNostrConnectRequest(
+    //             event,
+    //             keyToHex(keypair.publicKey()),
+    //             executeOperationForNotification,
+    //             resolve
+    //           )
+    //             .then(askUser => {
+    //               if (askUser) {
+    //                 Notifications.scheduleNotificationAsync({
+    //                   content: {
+    //                     title: 'Authentication Request',
+    //                     body: `Authentication request requires approval`,
+    //                     data: {
+    //                       type: 'authentication_request',
+    //                       requestId: id,
+    //                     },
+    //                   },
+    //                   trigger: null, // Show immediately
+    //                 });
+    //               }
+    //             })
+    //             .finally(() => {
+    //               abortController.abort();
+    //             });
+    //         });
+    //       })
+    //     )
+    //     .catch(e => {
+    //       console.error('Error listening for nip46 requests.', e);
+    //     });
   } catch (e) {
     console.error(e);
   }
