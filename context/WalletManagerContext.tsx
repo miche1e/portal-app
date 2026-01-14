@@ -26,7 +26,7 @@ import {
 import { CurrencyConversionService } from '@/services/CurrencyConversionService';
 import { deriveNsecFromMnemonic } from '@/utils/keyHelpers';
 import { ProviderRepository } from '@/queue/WorkQueue';
-import { ActiveWalletProvider, WalletWrapper } from '@/queue/providers/Wallet';
+import { ActiveWalletProvider, WalletWrapper } from '@/queue/providers/ActiveWallet';
 
 export interface WalletManagerContextType {
   activeWallet?: Wallet;

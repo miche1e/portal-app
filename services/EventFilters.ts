@@ -1,31 +1,14 @@
 import {
   CloseRecurringPaymentResponse,
-  RecurringPaymentRequest,
-  RecurringPaymentResponseContent,
-  SinglePaymentRequest,
-  PaymentStatus,
-  parseCalendar,
-  parseBolt11,
-  Currency_Tags,
   NostrConnectResponseStatus,
   NostrConnectMethod,
   keyToHex,
-  PortalAppInterface,
 } from 'portal-app-lib';
 import * as Notifications from 'expo-notifications';
-import { DatabaseService, fromUnixSeconds, SubscriptionWithDates } from './DatabaseService';
-import { CurrencyConversionService } from './CurrencyConversionService';
-import { globalEvents, PendingRequest } from '@/utils/common';
-import { Currency, CurrencyHelpers, normalizeCurrencyForComparison } from '@/utils/currency';
+import { DatabaseService } from './DatabaseService';
+import { globalEvents } from '@/utils/common';
+import { Currency, CurrencyHelpers } from '@/utils/currency';
 import { getMethodString } from '@/utils/nip46';
-import { Task } from '@/queue/WorkQueue';
-import { SignMessageRequest } from '@breeztech/breez-sdk-spark-react-native';
-import { WaitForRelaysConnectedTask } from '@/queue/tasks/WaitForRelaysConnected';
-import { PromptUserProvider } from '@/queue/providers/PromptUser';
-import { GetWalletInfoTask } from '@/queue/tasks/GetWalletInfo';
-import { SaveActivityTask } from '@/queue/tasks/SaveActivity';
-import { StartPaymentTask } from '@/queue/tasks/StartPayment';
-
 
 /**
  * Sends a local notification for payment-related events with human-readable formatting
